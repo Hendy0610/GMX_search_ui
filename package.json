@@ -1,0 +1,11 @@
+{
+  "name": "gmx-research-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Static browser interface for the GMX mailbox research tool",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  }
+}

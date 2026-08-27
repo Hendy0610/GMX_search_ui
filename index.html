@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Postfach-Recherche</title>
+
+    <!--
+      Content Security Policy.
+
+      'self' only, and no 'unsafe-inline' anywhere: every script is a module
+      file in this repository, every style is in styles.css. connect-src is
+      limited to the GitHub API, which is the one host this page ever talks to.
+      There is no analytics, no font CDN, no tracking pixel - not as a policy
+      decision to be respected, but as a rule the browser enforces.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'none';
+        script-src 'self';
+        style-src 'self';
+        connect-src https://api.github.com;
+        img-src 'self';
+        form-action 'none';
+        base-uri 'none';
+        frame-ancestors 'none'
+      "
+    />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body data-step="connect">
+    <header class="page-header">
+      <h1>Postfach-Recherche</h1>
+      <p class="lede">
+        Durchsucht ein GMX-Postfach nach Nachrichten zu einem Sachverhalt. Die
+        Recherche läuft in GitHub Actions, das Ergebnis wird verschlüsselt
+        übertragen und ausschließlich hier im Browser entschlüsselt.
+      </p>
+      <ol class="steps" aria-label="Ablauf">
+        <li data-step-name="connect">Verbinden</li>
+        <li data-step-name="research">Auftrag eingeben</li>
+        <li data-step-name="running">Recherche läuft</li>
+        <li data-step-name="results">Ergebnisse</li>
+      </ol>
+    </header>
+
+    <main>
+      <!-- A: GitHub connection -->
+      <section class="card" id="section-connect" aria-labelledby="connect-heading">
+        <h2 id="connect-heading">GitHub-Verbindung</h2>
+        <form id="connect-form" autocomplete="off">
+          <div class="field">
+            <label for="token">Zugriffstoken (fine-grained PAT)</label>
+            <input
+              type="password"
+              id="token"
+              name="token"
+              autocomplete="off"
+              spellcheck="false"
+              aria-describedby="token-help"
+              required
+            />
+            <p class="help" id="token-help">
+              Der Token wird nur im Arbeitsspeicher dieses Tabs gehalten – nicht
+              gespeichert, nicht übertragen, beim Schließen des Tabs weg.
+            </p>
+          </div>
+
+          <details class="help-block">
+            <summary>Welche Berechtigungen braucht der Token?</summary>
+            <p>
+              Erzeugen unter <em>Settings → Developer settings → Personal access
+              tokens → Fine-grained tokens</em>, beschränkt auf dieses eine
+              Repository:
+            </p>
+            <ul>
+              <li><strong>Actions: Read and write</strong> – Recherche starten und Status lesen</li>
+              <li><strong>Contents: Read-only</strong> – verschlüsseltes Ergebnis abrufen</li>
+              <li><strong>Metadata: Read-only</strong> – von GitHub automatisch verlangt</li>
+              <li>Alles Übrige: <strong>No access</strong></li>
+            </ul>
+            <p>
+              Schreibrechte auf Repository-Inhalte sind nicht nötig: Geschrieben
+              wird ausschließlich vom Workflow selbst.
+            </p>
+          </details>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="owner">GitHub-Konto</label>
+              <input type="text" id="owner" name="owner" spellcheck="false" />
+            </div>
+            <div class="field">
+              <label for="repo">Repository</label>
+              <input type="text" id="repo" name="repo" spellcheck="false" />
+            </div>
+            <div class="field">
+              <label for="results-branch">Ergebnis-Branch</label>
+              <input type="text" id="results-branch" name="results-branch" spellcheck="false" />
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="submit" class="primary">Verbinden</button>
+            <button type="button" id="disconnect">Verbindung trennen</button>
+          </div>
+        </form>
+        <p class="status" id="connect-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <!-- B: the research request -->
+      <section class="card" id="section-research" aria-labelledby="research-heading">
+        <h2 id="research-heading">Rechercheauftrag</h2>
+        <form id="research-form" autocomplete="off">
+          <div class="field">
+            <label for="query">Wonach soll gesucht werden?</label>
+            <textarea
+              id="query"
+              name="query"
+              rows="4"
+              aria-describedby="query-help"
+              placeholder="Zum Beispiel: Kommunikation über Verzögerungen bei den Planungsleistungen, nicht eingehaltene Termine, Fristüberschreitungen und Nachträge."
+            ></textarea>
+            <p class="help" id="query-help">
+              Beschreiben Sie den Sachverhalt in eigenen Worten. Begriffe in
+              Anführungszeichen werden als exakte Phrase gesucht.
+            </p>
+          </div>
+
+          <fieldset class="filters">
+            <legend>Optionale Einschränkungen</legend>
+            <div class="field-row">
+              <div class="field">
+                <label for="date-from">Zeitraum von</label>
+                <input type="date" id="date-from" name="date-from" />
+              </div>
+              <div class="field">
+                <label for="date-to">Zeitraum bis</label>
+                <input type="date" id="date-to" name="date-to" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="senders">Absender</label>
+              <input type="text" id="senders" name="senders" spellcheck="false"
+                     aria-describedby="senders-help" />
+              <p class="help" id="senders-help">
+                Vollständige Adressen, mehrere durch Komma getrennt.
+              </p>
+            </div>
+            <div class="field">
+              <label for="folders">Ordner</label>
+              <input type="text" id="folders" name="folders" spellcheck="false"
+                     aria-describedby="folders-help" />
+              <p class="help" id="folders-help">
+                Leer lassen, um alle Ordner zu durchsuchen.
+              </p>
+            </div>
+          </fieldset>
+
+          <div id="preview" class="preview-container" aria-live="polite"></div>
+
+          <details class="help-block">
+            <summary>Wie funktioniert die Recherche?</summary>
+            <p>
+              Aus Ihrem Text werden nach festen Regeln Suchbegriffe abgeleitet:
+              Füllwörter entfallen, deutsche Schreibvarianten werden ergänzt
+              (<em>Verzögerung</em> auch als <em>verzoegerung</em>), und ein
+              kleiner, fest hinterlegter Fachwortschatz ergänzt verwandte
+              Begriffe. Diese Begriffe sehen Sie oben vollständig.
+            </p>
+            <p>
+              Nachrichten, die mindestens einen dieser Begriffe enthalten, werden
+              als <em>Kandidaten</em> gesammelt und anschließend bewertet.
+              <strong>Nur Kandidaten werden bewertet.</strong> Eine Nachricht,
+              die denselben Sachverhalt mit völlig anderen Worten beschreibt
+              („wir schaffen den 15. Mai nicht“), wird nicht gefunden – es gibt
+              keine Bedeutungserkennung und keine Fehlertoleranz bei Tippfehlern.
+            </p>
+            <p>
+              Der Punktwert beschreibt, wie stark eine Nachricht nach diesen
+              Regeln mit Ihrer Beschreibung übereinstimmt. Er ist keine
+              rechtliche Bewertung und keine Aussage über den Beweiswert einer
+              Nachricht.
+            </p>
+          </details>
+
+          <div class="actions">
+            <button type="submit" class="primary">Recherche starten</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- C: progress and results -->
+      <section class="card" id="section-run" aria-labelledby="run-heading">
+        <h2 id="run-heading">Recherche</h2>
+        <p class="status" id="run-status" role="status" aria-live="polite"></p>
+        <div id="results"></div>
+        <div class="actions">
+          <button type="button" id="new-research">Neue Recherche</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <p>
+        Ergebnisse sind eine algorithmische Übereinstimmung mit Ihren
+        Suchbegriffen und keine rechtliche Bewertung. Originalnachrichten im
+        Postfach werden zu keinem Zeitpunkt verändert.
+      </p>
+    </footer>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
