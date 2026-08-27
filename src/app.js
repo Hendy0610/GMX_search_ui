@@ -203,6 +203,9 @@ export class App {
     this.$("start-copy").addEventListener("click", () => this.requestCopyConfirmation());
     this.$("confirm-copy").addEventListener("click", () => this.confirmCopy());
     this.$("cancel-copy").addEventListener("click", () => this.cancelCopy());
+    this.$("copy-confirm-box").addEventListener("keydown", (event) =>
+      this.#handleConfirmKey(event),
+    );
     this.updatePreview();
     this.#guardAgainstLosingTheKey();
     this.#showVersion();
@@ -609,12 +612,45 @@ export class App {
       this.selection.size,
       destination.trim(),
     );
-    this.$("copy-confirm-box").hidden = false;
-    this.$("confirm-copy").focus();
+    const box = this.$("copy-confirm-box");
+    box.hidden = false;
+    // Focus the dialog, never the button inside it.
+    //
+    // This line used to read `this.$("confirm-copy").focus()`, and that was a
+    // hole in the confirmation rather than a rough edge: whoever activated
+    // "Ausgewählte Nachrichten kopieren" from the keyboard had the confirm
+    // button under their cursor-equivalent immediately, so Enter, Enter - or
+    // Space, Space - copied without the text having been read. Reproduced in
+    // Chromium before it was changed.
+    //
+    // The dialog itself carries tabindex="-1" and is not activatable: a key
+    // press here does nothing at all. Reaching the button takes a Tab, which
+    // is the deliberate act the confirmation is supposed to require.
+    box.focus?.();
+  }
+
+  /**
+   * Escape inside the confirmation cancels it.
+   *
+   * The counterpart to not auto-focusing the button: the safe way out has to
+   * be at least as easy as the dangerous one, and Escape is where people
+   * already look for it.
+   */
+  #handleConfirmKey(event) {
+    if (event.key === "Escape" || event.key === "Esc") {
+      event.preventDefault?.();
+      this.cancelCopy();
+    }
   }
 
   cancelCopy() {
-    this.$("copy-confirm-box").hidden = true;
+    const box = this.$("copy-confirm-box");
+    const wasOpen = box.hidden === false;
+    box.hidden = true;
+    // The selection survives: cancelling means "not now", not "start over".
+    if (wasOpen) {
+      this.$("start-copy")?.focus?.();
+    }
     this.#status("copy-status", "Kopiervorgang abgebrochen. Es wurde nichts kopiert.");
   }
 
@@ -697,9 +733,22 @@ export class App {
           return;
         }
         if (state.state === "failed") {
+          // Deliberately not "der Auftrag wurde nicht ausgeführt": that is a
+          // claim the browser cannot make. A run can fail before it reaches
+          // the mailbox, but it can also fail after copying some messages -
+          // when publishing the report breaks, for instance. Saying "nothing
+          // happened" would be wrong in that case, and wrong in the direction
+          // that costs the operator a duplicate folder.
+          //
+          // What can be said: which run it was, that the log holds the answer,
+          // and what the common cause is - without asserting it, because the
+          // browser is not told the reason.
           this.#status(
             "copy-status",
-            `${state.text}. Der Kopierauftrag wurde nicht ausgeführt.`,
+            `${state.text}. Wie weit der Lauf gekommen ist, steht in seinem ` +
+              "Protokoll in GitHub. Häufigste Ursache ist eine vom Mailanbieter " +
+              "abgelehnte Anmeldung; dann wurde nichts kopiert, und ein erneuter " +
+              "Versuch nach einigen Minuten ist sinnvoll.",
             "error",
           );
           return;

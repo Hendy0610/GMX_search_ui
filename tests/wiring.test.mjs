@@ -18,6 +18,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { App } from "../src/app.js";
@@ -88,6 +89,11 @@ function appShowingResult(hits) {
   assert.equal(app.start(), true, "start() must succeed against the real markup");
   app.showResult(researchResult(hits), "r-20260828-testtest");
   return { app, doc };
+}
+
+/** Every id present in a chunk of markup. */
+function idsIn(html) {
+  return [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
 }
 
 function checkboxesIn(node) {
@@ -295,6 +301,58 @@ test("the confirmation appears only on request and states what will happen", () 
   assert.match(text, /nicht verändert/);
   assert.match(text, /nicht verschoben/);
   assert.match(text, /nicht gelöscht/);
+});
+
+test("opening the confirmation focuses the dialog, never the copy button", () => {
+  // The bug this replaces: the button that copies took focus the moment the
+  // dialog opened, so the keypress that opened it could confirm it. The
+  // dialog itself is not activatable - a key press on it does nothing.
+  const { app, doc } = appShowingResult([hit(101)]);
+  tick(checkboxesIn(doc.getElementById("results"))[0], true);
+  app.requestCopyConfirmation();
+
+  assert.equal(doc.activeElement, doc.getElementById("copy-confirm-box"));
+  assert.notEqual(doc.activeElement, doc.getElementById("confirm-copy"));
+  assert.notEqual(doc.activeElement, doc.getElementById("cancel-copy"));
+});
+
+test("the dialog is reachable by keyboard and announces itself", () => {
+  const html = readFileSync(INDEX, "utf8");
+  const tag = /<div[^>]*id="copy-confirm-box"[^>]*>/.exec(html)?.[0] ?? "";
+  assert.match(tag, /tabindex="-1"/, "the dialog must be focusable programmatically");
+  assert.match(tag, /role="alertdialog"/);
+  assert.match(tag, /aria-labelledby="copy-confirm-heading"/);
+  assert.match(tag, /aria-describedby="copy-confirm-text"/);
+  assert.ok(idsIn(html).includes("copy-confirm-heading"), "the dialog needs a title");
+});
+
+test("escape inside the dialog cancels and copies nothing", () => {
+  const { app, doc } = appShowingResult([hit(101)]);
+  tick(checkboxesIn(doc.getElementById("results"))[0], true);
+  app.requestCopyConfirmation();
+
+  doc.getElementById("copy-confirm-box").dispatch("keydown", { key: "Escape" });
+  assert.equal(doc.getElementById("copy-confirm-box").hidden, true);
+  assert.match(doc.getElementById("copy-status").textContent, /nichts kopiert/);
+  assert.equal(app.selection.size, 1, "escape must not clear the selection");
+});
+
+test("an unrelated key inside the dialog does nothing", () => {
+  const { app, doc } = appShowingResult([hit(101)]);
+  tick(checkboxesIn(doc.getElementById("results"))[0], true);
+  app.requestCopyConfirmation();
+  for (const key of ["Enter", " ", "a", "Tab"]) {
+    doc.getElementById("copy-confirm-box").dispatch("keydown", { key });
+  }
+  assert.equal(doc.getElementById("copy-confirm-box").hidden, false, "still open");
+});
+
+test("cancelling puts focus back where it came from", () => {
+  const { app, doc } = appShowingResult([hit(101)]);
+  tick(checkboxesIn(doc.getElementById("results"))[0], true);
+  app.requestCopyConfirmation();
+  app.cancelCopy();
+  assert.equal(doc.activeElement, doc.getElementById("start-copy"));
 });
 
 test("no confirmation without a selection", () => {

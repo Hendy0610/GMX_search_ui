@@ -274,10 +274,29 @@
           The confirmation. `hidden` in the markup, so a page whose script
           never runs cannot show a confirm button, and shown only after the
           destination has been validated and at least one message is ticked.
+
+          `tabindex="-1"` so the script can move focus *here* when the dialog
+          opens - onto the text, never onto the button that copies. It used to
+          focus "Kopieren bestätigen", which meant the same key that opened
+          this dialog confirmed it: Enter, Enter was enough to copy without
+          reading a word. The button is one Tab away and has to be reached
+          deliberately.
+
+          role="alertdialog" rather than "group": this interrupts the flow and
+          wants an answer, and it makes screen readers announce the text below
+          on open.
         -->
-        <div class="confirm-box" id="copy-confirm-box" role="group"
-             aria-labelledby="copy-confirm-text" hidden>
+        <div class="confirm-box" id="copy-confirm-box" role="alertdialog"
+             tabindex="-1" aria-labelledby="copy-confirm-heading"
+             aria-describedby="copy-confirm-text" hidden>
+          <h3 class="confirm-heading" id="copy-confirm-heading">
+            Kopiervorgang bestätigen
+          </h3>
           <p class="confirm-text" id="copy-confirm-text"></p>
+          <p class="help" id="copy-confirm-help">
+            Mit der Tabulatortaste zu „Kopieren bestätigen“ wechseln, oder mit
+            Escape abbrechen.
+          </p>
           <div class="actions">
             <button type="button" id="confirm-copy" class="primary">
               Kopieren bestätigen

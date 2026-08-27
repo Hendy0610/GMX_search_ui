@@ -58,8 +58,17 @@ class StubNode {
     return node;
   }
 
-  /** Focus is a real thing the application asks for; here it is a no-op. */
-  focus() {}
+  /** Focus, recorded so a test can ask what the application focused. */
+  focus() {
+    if (this.ownerDocument) {
+      this.ownerDocument.activeElement = this;
+    }
+  }
+
+  /** Fire a recorded handler the way the browser would. */
+  dispatch(type, event = {}) {
+    this.listeners[type]?.({ preventDefault() {}, ...event });
+  }
 
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
@@ -104,6 +113,9 @@ export function createStubDocument() {
   const body = new StubNode("body");
   return {
     body,
+    //: What `focus()` last landed on. The real thing is read-only; here it is
+    //: simply recorded, which is all a test needs to ask.
+    activeElement: null,
     createElement: (tag) => new StubNode(tag),
     createTextNode: (value) => new StubText(value),
     getElementById: (id) => byId.get(id) ?? null,
@@ -141,6 +153,7 @@ export function createPageStub(htmlPath) {
     }
     ids.push(id);
     const node = new StubNode(tag);
+    node.ownerDocument = doc;
     node.setAttribute("id", id);
     node.value = "";
     node.checked = false;

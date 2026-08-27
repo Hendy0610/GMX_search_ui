@@ -244,6 +244,10 @@ button:disabled:hover { border-color: var(--line); }
   background: var(--surface);
 }
 .confirm-box[hidden] { display: none; }
+/* The dialog takes focus when it opens, so it needs a focus ring of its own -
+   otherwise the keyboard user is somewhere invisible. */
+.confirm-box:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.confirm-heading { margin: 0 0 0.5rem; font-size: 1rem; }
 .confirm-text { margin: 0; font-weight: 600; }
 
 .copy-report { margin-top: 1.2rem; }
