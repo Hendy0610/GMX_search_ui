@@ -218,8 +218,55 @@ export function renderSummary(doc, result) {
 
 // -- one hit ----------------------------------------------------------------
 
-export function renderHit(doc, hit, index) {
+/**
+ * A message's identity, as the copy order will carry it.
+ *
+ * Folder, uid_validity, uid and Message-ID - never the subject. Two messages
+ * can share a subject; a selection keyed on one would copy the wrong mail, and
+ * in a legal dispute that is the expensive kind of mistake.
+ */
+export function hitIdentity(hit) {
+  return {
+    folder: String(hit.folder ?? ""),
+    uid: Number(hit.message_uid ?? 0),
+    uid_validity: hit.uid_validity === null || hit.uid_validity === undefined
+      ? null
+      : Number(hit.uid_validity),
+    message_id: hit.message_id ? String(hit.message_id) : null,
+  };
+}
+
+/** A stable key for one identity. Used to track the selection, never shown. */
+export function identityKey(hit) {
+  const id = hitIdentity(hit);
+  return `${id.folder}\u0000${id.uid_validity ?? ""}\u0000${id.uid}`;
+}
+
+export function renderHit(doc, hit, index, { selectable = false, onToggle = null } = {}) {
   const card = el(doc, "article", { className: "hit", attrs: { "data-index": index } });
+
+  if (selectable) {
+    const key = identityKey(hit);
+    const row = el(doc, "div", { className: "hit-select" });
+    const box = el(doc, "input", {
+      attrs: { type: "checkbox", id: `select-${index}`, "data-key": key },
+    });
+    // Nothing is ticked by default, and there is no control that ticks
+    // everything. Copying is always a per-message decision.
+    box.checked = false;
+    if (onToggle) {
+      box.addEventListener("change", () => onToggle(key, box.checked, hit));
+    }
+    row.appendChild(box);
+    row.appendChild(
+      el(doc, "label", {
+        className: "hit-select-label",
+        text: "Nachricht auswählen",
+        attrs: { for: `select-${index}` },
+      }),
+    );
+    card.appendChild(row);
+  }
 
   const header = el(doc, "header", { className: "hit-header" });
   const band = bandFor(hit.relevance_score ?? 0);
@@ -368,7 +415,7 @@ export function renderEmpty(doc) {
   return box;
 }
 
-export function renderResults(doc, result) {
+export function renderResults(doc, result, options = {}) {
   const container = el(doc, "div", { className: "results" });
   container.appendChild(renderSummary(doc, result));
 
@@ -378,9 +425,122 @@ export function renderResults(doc, result) {
     return container;
   }
   const list = el(doc, "div", { className: "hit-list" });
-  hits.forEach((hit, index) => list.appendChild(renderHit(doc, hit, index)));
+  hits.forEach((hit, index) => list.appendChild(renderHit(doc, hit, index, options)));
   container.appendChild(list);
   return container;
+}
+
+// -- copying selected originals ---------------------------------------------
+
+/**
+ * The confirmation sentence.
+ *
+ * Says *copied*, never *moved*, and says so about a specific number. A user
+ * about to touch their own mailbox in a legal dispute is entitled to read
+ * exactly what will happen before it happens.
+ */
+export function confirmationText(count, destination) {
+  const noun = count === 1 ? "Originalnachricht" : "Originalnachrichten";
+  return (
+    `Es ${count === 1 ? "wird" : "werden"} ${count} ${noun} in den Ordner ` +
+    `„${destination}“ kopiert. Die Originalnachrichten im Postfach werden ` +
+    "dabei nicht verändert, nicht verschoben und nicht gelöscht."
+  );
+}
+
+/** How many are selected, in words the interface can show directly. */
+export function selectionSummary(count) {
+  if (count === 0) {
+    return "Keine Nachricht ausgewählt.";
+  }
+  return count === 1 ? "1 Nachricht ausgewählt" : `${count} Nachrichten ausgewählt`;
+}
+
+const COPY_STATUS_LABELS = {
+  copied: "kopiert",
+  already_present: "war bereits im Zielordner",
+  not_found: "nicht mehr eindeutig auffindbar",
+  refused: "vom Server abgelehnt",
+  failed: "fehlgeschlagen",
+};
+
+/**
+ * The outcome of a copy order.
+ *
+ * Reports four numbers that must add up, and lists every message that did not
+ * make it. "3 kopiert" when 4 were selected is a statement about 4 messages,
+ * not about 3.
+ */
+export function renderCopyReport(doc, report, hitsByKey = new Map()) {
+  const box = el(doc, "section", { className: "copy-report" });
+  box.appendChild(el(doc, "h2", { text: "Kopiervorgang abgeschlossen" }));
+
+  const outcomes = Array.isArray(report.outcomes) ? report.outcomes : [];
+  const counts = {
+    copied: outcomes.filter((o) => o.status === "copied").length,
+    already: outcomes.filter((o) => o.status === "already_present").length,
+    failed: outcomes.filter((o) => !["copied", "already_present"].includes(o.status)).length,
+  };
+
+  const list = el(doc, "ul", { className: "summary-counts" });
+  list.appendChild(
+    el(doc, "li", {
+      text: `Zielordner: ${report.destination_folder ?? ""}${
+        report.destination_created ? " (neu angelegt)" : ""
+      }`,
+    }),
+  );
+  list.appendChild(el(doc, "li", { text: `${outcomes.length} Nachrichten ausgewählt` }));
+  list.appendChild(el(doc, "li", { text: `${counts.copied} Nachrichten kopiert` }));
+  list.appendChild(el(doc, "li", { text: `${counts.already} bereits vorhanden` }));
+  list.appendChild(el(doc, "li", { text: `${counts.failed} fehlgeschlagen` }));
+  box.appendChild(list);
+
+  const problems = outcomes.filter(
+    (outcome) => !["copied", "already_present"].includes(outcome.status),
+  );
+  if (problems.length) {
+    const notice = el(doc, "div", { className: "notice notice-warning" });
+    notice.appendChild(
+      el(doc, "p", {
+        text:
+          "Diese Nachrichten wurden nicht kopiert. Bereits erfolgreiche Kopien " +
+          "bleiben davon unberührt:",
+      }),
+    );
+    const details = el(doc, "ul");
+    for (const outcome of problems) {
+      const key = outcome.ref
+        ? `${outcome.ref.folder}\u0000${outcome.ref.uid_validity ?? ""}\u0000${outcome.ref.uid}`
+        : "";
+      const hit = hitsByKey.get(key);
+      const label = hit?.subject ? hit.subject : `UID ${outcome.ref?.uid ?? "?"}`;
+      const entry = el(doc, "li");
+      entry.appendChild(el(doc, "span", { text: label }));
+      entry.appendChild(
+        el(doc, "span", {
+          className: "muted",
+          text: ` — ${COPY_STATUS_LABELS[outcome.status] ?? outcome.status}`,
+        }),
+      );
+      if (outcome.detail) {
+        entry.appendChild(el(doc, "span", { className: "muted", text: ` (${outcome.detail})` }));
+      }
+      details.appendChild(entry);
+    }
+    notice.appendChild(details);
+    box.appendChild(notice);
+  }
+
+  box.appendChild(
+    el(doc, "p", {
+      className: "disclaimer",
+      text:
+        "Die Originalnachrichten wurden kopiert, nicht verschoben. Sie befinden " +
+        "sich unverändert an ihrem ursprünglichen Ort.",
+    }),
+  );
+  return box;
 }
 
 // -- the search-scope preview ----------------------------------------------

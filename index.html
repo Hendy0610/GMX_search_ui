@@ -209,6 +209,79 @@
           <button type="button" id="new-research">Neue Recherche</button>
         </div>
       </section>
+
+      <!--
+        D: copying selected originals.
+
+        There is deliberately no "alle auswählen" control here, and none
+        anywhere else in this repository. Every message that gets copied was
+        ticked by hand, one checkbox at a time, and then confirmed in the box
+        below. A high score selects nothing.
+      -->
+      <section class="card" id="section-copy" aria-labelledby="copy-heading">
+        <h2 id="copy-heading">Nachrichten in einen Rechercheordner kopieren</h2>
+        <p class="lede">
+          Ausgewählte Originalnachrichten werden im Postfach in einen
+          Rechercheordner <strong>kopiert</strong>. Die Originale bleiben
+          unverändert an ihrem Platz – sie werden nicht verschoben, nicht
+          gelöscht und nicht als gelesen markiert.
+        </p>
+
+        <div class="field">
+          <label for="destination">Zielordner</label>
+          <input
+            type="text"
+            id="destination"
+            name="destination"
+            spellcheck="false"
+            autocomplete="off"
+            aria-describedby="destination-help"
+          />
+          <p class="help" id="destination-help">
+            Vorgeschlagen wird ein eindeutiger Name je Recherche. Erlaubt sind
+            Buchstaben, Ziffern, Leerzeichen, Punkt, Bindestrich, Unterstrich
+            und Klammern, höchstens vier Ebenen mit <code>/</code>.
+          </p>
+        </div>
+
+        <div class="field checkbox-field">
+          <input type="checkbox" id="allow-existing" name="allow-existing" />
+          <label for="allow-existing">
+            In einen bereits vorhandenen Ordner hinzufügen
+          </label>
+          <p class="help" id="allow-existing-help">
+            Ohne diesen Haken bricht der Vorgang ab, wenn der Ordner schon
+            existiert, statt ungefragt hineinzuschreiben.
+          </p>
+        </div>
+
+        <p class="selection-count" id="selection-count" role="status" aria-live="polite"></p>
+
+        <div class="actions">
+          <button type="button" id="start-copy" class="primary" disabled>
+            Ausgewählte Nachrichten kopieren
+          </button>
+        </div>
+
+        <!--
+          The confirmation. `hidden` in the markup, so a page whose script
+          never runs cannot show a confirm button, and shown only after the
+          destination has been validated and at least one message is ticked.
+        -->
+        <div class="confirm-box" id="copy-confirm-box" role="group"
+             aria-labelledby="copy-confirm-text" hidden>
+          <p class="confirm-text" id="copy-confirm-text"></p>
+          <div class="actions">
+            <button type="button" id="confirm-copy" class="primary">
+              Kopieren bestätigen
+            </button>
+            <button type="button" id="cancel-copy">Abbrechen</button>
+          </div>
+        </div>
+
+        <p class="status" id="copy-status" role="status" aria-live="polite"></p>
+        <div id="copy-result"></div>
+      </section>
     </main>
 
     <footer class="page-footer">

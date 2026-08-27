@@ -210,13 +210,41 @@ export class GitHubClient {
   }
 
   /**
+   * Start a copy order.
+   *
+   * The same dispatch endpoint and the same permission as a research run - a
+   * different workflow file. The inputs carry message *references* and a
+   * folder name: no subject, no body, no snippet. Run metadata is visible to
+   * everyone with repository read access.
+   */
+  async dispatchCopy({ researchId, publicKeyB64, payload, allowExisting = false, ref }) {
+    await this.#request(
+      "POST",
+      `/actions/workflows/${encodeURIComponent(this.#config.copyWorkflow)}/dispatches`,
+      {
+        what: "der Kopier-Workflow",
+        body: {
+          ref: ref ?? this.#config.ref,
+          inputs: {
+            research_id: researchId,
+            recipient_public_key: publicKeyB64,
+            payload: JSON.stringify(payload),
+            allow_existing_destination: allowExisting ? "true" : "false",
+          },
+        },
+      },
+    );
+    return { researchId };
+  }
+
+  /**
    * Find the workflow run for a research id.
    *
    * GitHub's dispatch endpoint returns no run id, so the run has to be located
    * afterwards. Runs are listed newest first and matched by the research id in
    * their display title; until one appears the run is still being created.
    */
-  async findRun(researchId, { createdAfter = null } = {}) {
+  async findRun(researchId, { createdAfter = null, namePrefix = null } = {}) {
     const data = await this.#request("GET", "/actions/runs", {
       what: "die Workflow-Läufe",
       params: {
@@ -226,9 +254,14 @@ export class GitHubClient {
       },
     });
     const runs = Array.isArray(data?.workflow_runs) ? data.workflow_runs : [];
+    // The run name is "Research <id>" or "Copy <id>". Matching on the id alone
+    // would pick up the research run when looking for the copy run, since both
+    // carry the same id.
     const match = runs.find(
       (run) =>
-        typeof run?.display_title === "string" && run.display_title.includes(researchId),
+        typeof run?.display_title === "string" &&
+        run.display_title.includes(researchId) &&
+        (!namePrefix || run.display_title.startsWith(namePrefix)),
     );
     return match ? this.#describeRun(match) : null;
   }

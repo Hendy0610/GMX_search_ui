@@ -13,6 +13,10 @@ class StubNode {
     this.attributes = new Map();
     this.className = "";
     this._text = "";
+    // Handlers are kept so a test can invoke one the way the browser would.
+    // The stub dispatches nothing by itself; a test that wants a change event
+    // calls the handler and says so.
+    this.listeners = {};
   }
 
   set textContent(value) {
@@ -47,7 +51,9 @@ class StubNode {
     return this.attributes.get(name) ?? null;
   }
 
-  addEventListener() {}
+  addEventListener(type, handler) {
+    this.listeners[type] = handler;
+  }
 
   /** Depth-first walk, for assertions. */
   *walk() {

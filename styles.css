@@ -102,6 +102,10 @@ body[data-step="running"]  #section-research,
 body[data-step="results"]  #section-research { display: block; }
 body[data-step="running"] #section-run,
 body[data-step="results"] #section-run { display: block; }
+/* The copy section appears only once there are results to select from. It
+   stays in the DOM throughout so the script can wire it up once. */
+#section-copy { display: none; }
+body[data-step="results"] #section-copy { display: block; }
 
 .field { margin-bottom: 1rem; }
 .field-row { display: flex; flex-wrap: wrap; gap: 1rem; }
@@ -201,3 +205,37 @@ button:hover { border-color: var(--accent); }
 .empty h2 { margin-top: 0; }
 
 .page-footer { margin-top: 2.5rem; color: var(--muted); font-size: 0.85rem; }
+
+/* The per-hit checkbox. It is unchecked in the markup and stays unchecked
+   until a person clicks it: there is no select-all control, and no score
+   ticks a box. */
+.hit-select { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
+.hit-select input { width: auto; margin: 0; }
+.hit-select-label { font-weight: 600; margin: 0; font-size: 0.9rem; }
+
+/* The copy section. */
+.checkbox-field { display: grid; grid-template-columns: auto 1fr; gap: 0 0.5rem; align-items: center; }
+.checkbox-field input { width: auto; margin: 0; }
+.checkbox-field label { margin: 0; }
+.checkbox-field .help { grid-column: 2; }
+
+.selection-count { font-weight: 600; margin: 1rem 0 0; min-height: 1.4rem; }
+
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+button:disabled:hover { border-color: var(--line); }
+
+/* The confirmation. Bordered in the accent colour so it reads as a decision
+   point rather than as another paragraph. */
+.confirm-box {
+  margin-top: 1rem;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 1rem 1.2rem;
+  background: var(--surface);
+}
+.confirm-box[hidden] { display: none; }
+.confirm-text { margin: 0; font-weight: 600; }
+
+.copy-report { margin-top: 1.2rem; }
+.copy-report h2 { margin-top: 0; font-size: 1.15rem; }
+.copy-report ul ul { margin: 0.4rem 0 0; padding-left: 1.2rem; font-size: 0.92rem; }

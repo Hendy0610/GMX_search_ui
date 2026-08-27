@@ -16,7 +16,15 @@ import { CONFIG } from "../config.js";
 import { CryptoError, decryptEnvelopeJson, generateResearchKeyPair } from "./crypto.js";
 import { GitHubClient, GitHubError } from "./github.js";
 import { previewQuery } from "./query-preview.js";
-import { renderQueryPreview, renderResults } from "./render.js";
+import {
+  confirmationText,
+  hitIdentity,
+  identityKey,
+  renderCopyReport,
+  renderQueryPreview,
+  renderResults,
+  selectionSummary,
+} from "./render.js";
 import { Session } from "./session.js";
 
 const POLL_INTERVAL_MS = 4000;
@@ -121,6 +129,10 @@ export class App {
     this.session = new Session(storage ?? globalThis.sessionStorage);
     this.client = null;
     this.pollTimer = null;
+    //: Selected messages, keyed by identity - never by subject. Empty by
+    //: default, and nothing in this application ever fills it automatically.
+    this.selection = new Map();
+    this.copyPollTimer = null;
   }
 
   $(id) {
@@ -144,6 +156,9 @@ export class App {
     });
     this.$("query").addEventListener("input", () => this.updatePreview());
     this.$("new-research").addEventListener("click", () => this.resetForNewResearch());
+    this.$("start-copy").addEventListener("click", () => this.requestCopyConfirmation());
+    this.$("confirm-copy").addEventListener("click", () => this.confirmCopy());
+    this.$("cancel-copy").addEventListener("click", () => this.cancelCopy());
     this.updatePreview();
     this.#guardAgainstLosingTheKey();
     this.#setStep("connect");
@@ -232,6 +247,7 @@ export class App {
 
   disconnect() {
     this.#stopPolling();
+    this.#clearCopyState();
     this.client?.disconnect();
     this.client = null;
     this.session.disconnect();
@@ -317,6 +333,22 @@ export class App {
     if (this.pollTimer !== null) {
       clearTimeout(this.pollTimer);
       this.pollTimer = null;
+    }
+  }
+
+  /** Drop the selection, the copy key pair and anything shown about a copy. */
+  #clearCopyState() {
+    if (this.copyPollTimer !== null) {
+      clearTimeout(this.copyPollTimer);
+      this.copyPollTimer = null;
+    }
+    this.selection.clear();
+    this.copyKey = null;
+    this.copyPublicKey = null;
+    this.copyRun = null;
+    this.$("copy-result")?.replaceChildren();
+    if (this.$("copy-confirm-box")) {
+      this.$("copy-confirm-box").hidden = true;
     }
   }
 
@@ -406,16 +438,208 @@ export class App {
     }
 
     this.session.setResult(result);
+    this.selection.clear();
     this.#status("run-status", "");
     const container = this.$("results");
-    container.replaceChildren(renderResults(this.doc, result));
+    container.replaceChildren(
+      renderResults(this.doc, result, {
+        selectable: true,
+        onToggle: (key, checked, hit) => this.#toggleSelection(key, checked, hit),
+      }),
+    );
+    this.$("destination").value = defaultDestinationFolder(researchId);
+    this.#refreshSelection();
     this.#setStep("results");
+  }
+
+  // -- selecting messages to copy ----------------------------------------
+
+  #toggleSelection(key, checked, hit) {
+    if (checked) {
+      this.selection.set(key, hitIdentity(hit));
+    } else {
+      this.selection.delete(key);
+    }
+    this.#refreshSelection();
+  }
+
+  /**
+   * Reflect the selection in the interface.
+   *
+   * The count is shown as a number and the copy button is disabled while
+   * nothing is ticked - there is no path from "no selection" to a copy, and no
+   * control anywhere that ticks everything at once.
+   */
+  #refreshSelection() {
+    const count = this.selection.size;
+    this.$("selection-count").textContent = selectionSummary(count);
+    this.$("start-copy").disabled = count === 0;
+    this.$("copy-confirm-box").hidden = true;
+    this.#status("copy-status", "");
+  }
+
+  /** Show the confirmation. Nothing is copied until it is accepted. */
+  requestCopyConfirmation() {
+    const destination = this.$("destination").value;
+    const problem = validateDestination(destination);
+    if (problem) {
+      this.#status("copy-status", problem, "error");
+      return;
+    }
+    if (this.selection.size === 0) {
+      this.#status("copy-status", "Bitte wählen Sie mindestens eine Nachricht aus.", "error");
+      return;
+    }
+    this.$("copy-confirm-text").textContent = confirmationText(
+      this.selection.size,
+      destination.trim(),
+    );
+    this.$("copy-confirm-box").hidden = false;
+    this.$("confirm-copy").focus();
+  }
+
+  cancelCopy() {
+    this.$("copy-confirm-box").hidden = true;
+    this.#status("copy-status", "Kopiervorgang abgebrochen. Es wurde nichts kopiert.");
+  }
+
+  // -- copying -----------------------------------------------------------
+
+  async confirmCopy() {
+    const destination = this.$("destination").value.trim();
+    const researchId = this.session.researchId;
+    if (!this.client || !researchId || this.selection.size === 0) {
+      this.#status("copy-status", "Es ist keine Auswahl vorhanden.", "error");
+      return;
+    }
+    this.$("copy-confirm-box").hidden = true;
+    this.#status("copy-status", "Kopiervorgang wird gestartet …");
+
+    const payload = {
+      schema: "gmx-copy-request/1",
+      destination_folder: destination,
+      create_destination: true,
+      selection: [...this.selection.values()],
+    };
+    try {
+      await this.client.dispatchCopy({
+        researchId,
+        publicKeyB64: this.copyPublicKey ?? (await this.#copyKeyPair()).publicKeyB64,
+        payload,
+        allowExisting: this.$("allow-existing").checked,
+        ref: this.config.ref,
+      });
+    } catch (error) {
+      this.#status("copy-status", messageFor(error), "error");
+      return;
+    }
+    this.#pollCopy(researchId);
+  }
+
+  /**
+   * The copy report is encrypted to its own ephemeral key pair.
+   *
+   * A separate pair from the research run: the report is a separate artefact
+   * with its own envelope, and reusing the research key would mean one leaked
+   * key exposes both.
+   */
+  async #copyKeyPair() {
+    if (!this.copyKey) {
+      this.copyKey = await generateResearchKeyPair(this.crypto);
+      this.copyPublicKey = this.copyKey.publicKeyB64;
+    }
+    return this.copyKey;
+  }
+
+  #pollCopy(researchId, deadline = Date.now() + POLL_TIMEOUT_MS) {
+    if (this.copyPollTimer !== null) {
+      clearTimeout(this.copyPollTimer);
+    }
+    const tick = async () => {
+      if (Date.now() > deadline) {
+        this.#status(
+          "copy-status",
+          "Der Kopiervorgang meldet seit längerer Zeit keinen Fortschritt. Bitte prüfen Sie den Lauf in GitHub.",
+          "error",
+        );
+        return;
+      }
+      try {
+        const run = this.copyRun
+          ? await this.client.getWorkflowRun(this.copyRun.id)
+          : await this.client.findRun(researchId, { namePrefix: "Copy " });
+        if (run) {
+          this.copyRun = run;
+        }
+        const state = describeRunState(run);
+        this.#status(
+          "copy-status",
+          state.state === "success" ? "Bericht wird abgerufen …" : state.text,
+          state.state === "failed" ? "error" : "info",
+        );
+        if (state.state === "success") {
+          await this.#collectCopyReport(researchId);
+          return;
+        }
+        if (state.state === "failed") {
+          this.#status(
+            "copy-status",
+            `${state.text}. Der Kopierauftrag wurde nicht ausgeführt.`,
+            "error",
+          );
+          return;
+        }
+      } catch (error) {
+        this.#status("copy-status", messageFor(error), "error");
+        return;
+      }
+      this.copyPollTimer = setTimeout(tick, POLL_INTERVAL_MS);
+    };
+    this.copyPollTimer = setTimeout(tick, 1500);
+  }
+
+  async #collectCopyReport(researchId) {
+    let envelope;
+    try {
+      envelope = await this.client.getResultEnvelope(researchId, { kind: "copy" });
+    } catch (error) {
+      this.#status("copy-status", messageFor(error), "error");
+      return;
+    }
+    if (!envelope) {
+      this.copyPollTimer = setTimeout(
+        () => this.#collectCopyReport(researchId),
+        POLL_INTERVAL_MS,
+      );
+      return;
+    }
+    let report;
+    try {
+      report = await decryptEnvelopeJson(envelope, (await this.#copyKeyPair()).privateKey, {
+        expectedResearchId: researchId,
+        subtleSource: this.crypto,
+      });
+    } catch (error) {
+      this.#status("copy-status", messageFor(error), "error");
+      return;
+    }
+    if (!report || report.schema !== "gmx-copy-report/1") {
+      this.#status("copy-status", "Der Kopierbericht hat ein unbekanntes Format.", "error");
+      return;
+    }
+
+    const hitsByKey = new Map(
+      (this.session.result?.hits ?? []).map((hit) => [identityKey(hit), hit]),
+    );
+    this.$("copy-result").replaceChildren(renderCopyReport(this.doc, report, hitsByKey));
+    this.#status("copy-status", "");
   }
 
   // -- starting over -----------------------------------------------------
 
   resetForNewResearch() {
     this.#stopPolling();
+    this.#clearCopyState();
     // The old key pair and the old result go now, not when the next run
     // overwrites them.
     this.session.startResearch(null, null);
@@ -424,6 +648,45 @@ export class App {
     this.#status("run-status", "");
     this.#setStep("research");
   }
+}
+
+/** The folder name proposed for a research, and the one the backend validates. */
+export function defaultDestinationFolder(researchId) {
+  return `Recherche ${researchId}`;
+}
+
+/**
+ * Client-side check of a destination folder name.
+ *
+ * A copy of the backend's rule, kept deliberately conservative: it exists to
+ * tell the user *before* a run that a name will be refused, not to replace the
+ * validation that matters. The runner validates again and is the authority -
+ * see app/models/copy.py.
+ */
+export function validateDestination(name) {
+  const cleaned = String(name ?? "").trim().replace(/^\/+|\/+$/g, "");
+  if (!cleaned) {
+    return "Bitte geben Sie einen Zielordner an.";
+  }
+  if (cleaned.length > 255) {
+    return "Der Ordnername ist zu lang.";
+  }
+  const segments = cleaned.split("/").map((part) => part.trim());
+  if (segments.some((part) => !part)) {
+    return "Der Ordnername darf keine leeren Abschnitte enthalten.";
+  }
+  if (segments.length > 4) {
+    return "Der Ordnername darf höchstens vier Ebenen tief sein.";
+  }
+  for (const segment of segments) {
+    if (segment === "." || segment === "..") {
+      return "Der Ordnername darf keine Abschnitte „.“ oder „..“ enthalten.";
+    }
+    if (!/^[\p{L}\p{N}_ .\-()]{1,64}$/u.test(segment)) {
+      return `Nicht verwendbarer Ordnername: ${segment}`;
+    }
+  }
+  return null;
 }
 
 /** A message a non-technical reader can act on. Never a raw error object. */
