@@ -37,6 +37,7 @@ src/
   query-preview.js  welche Suchbegriffe der Auftrag erzeugt
   text.js           Normalisierung und deutsche Schreibvarianten
   query-data.js     GENERIERT aus dem Backend – nicht von Hand ändern
+  version.js        welche Fassung ausgeliefert wurde
 tests/              Tests, Node-eigener Runner, ohne Dependencies
 ```
 
@@ -56,6 +57,14 @@ Treffern), dass es keinen „Alle auswählen"-Schalter gibt, dass eine Auswahl a
 Ordner, `UIDVALIDITY`, `UID` und `Message-ID` hängt statt am sichtbaren
 Betreff, und dass der Bericht „kopiert" sagt und nie „verschoben".
 
+`tests/wiring.test.mjs` prüft etwas anderes als die übrigen Dateien: Es ruft
+keine Rendering-Funktion direkt auf, sondern baut ein Dokument aus **der
+echten `index.html`** — die IDs werden aus der Datei gelesen — startet die
+`App` darauf und treibt sie wie ein Lauf. Der Anlass war konkret: Eine
+Ergebnisliste erschien einmal ohne Checkboxen, während jeder Test grün war,
+weil die Verdrahtung zwischen `app.js` und `index.html` von keinem Test berührt
+wurde.
+
 Zwei weitere Tests liegen im Backend-Repository, weil sie beide Sprachen
 brauchen:
 
@@ -64,6 +73,17 @@ brauchen:
   Produktivbetrieb auffallen, nach einem Lauf über das echte Postfach.
 * `tests/test_query_preview_parity.py` – die angezeigten Suchbegriffe müssen
   exakt die sein, die der Runner verwendet.
+
+## Welche Fassung liegt im Browser?
+
+Im Seitenfuß steht eine Versionszeile, und dieselbe Zeile erscheint beim Start
+in der Browserkonsole. Sie beantwortet die Frage, die sonst nur aus
+Deploy-Zeitstempeln zu erraten wäre.
+
+Fehlen der geladenen Seite Bedienelemente — etwa weil ein Tab über ein
+Deployment hinweg offen blieb — meldet die Oberfläche das ausdrücklich und
+nennt die Tastenkombination für einen vollständigen Neuladevorgang, statt
+stumm halb zu funktionieren.
 
 ## Konfiguration
 

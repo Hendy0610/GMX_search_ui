@@ -35,7 +35,7 @@
     -->
     <meta name="referrer" content="no-referrer" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=7" />
   </head>
 
   <body data-step="connect">
@@ -227,6 +227,14 @@
           gelöscht und nicht als gelesen markiert.
         </p>
 
+        <p class="selection-count" id="selection-count" role="status" aria-live="polite"></p>
+
+        <!--
+          Destination and button are hidden until something is ticked: they
+          have nothing to act on before that. `hidden` in the markup, so a page
+          whose script never runs cannot offer a copy button.
+        -->
+        <div id="copy-controls" hidden>
         <div class="field">
           <label for="destination">Zielordner</label>
           <input
@@ -255,12 +263,11 @@
           </p>
         </div>
 
-        <p class="selection-count" id="selection-count" role="status" aria-live="polite"></p>
-
         <div class="actions">
           <button type="button" id="start-copy" class="primary" disabled>
             Ausgewählte Nachrichten kopieren
           </button>
+        </div>
         </div>
 
         <!--
@@ -287,11 +294,17 @@
     <footer class="page-footer">
       <p>
         Ergebnisse sind eine algorithmische Übereinstimmung mit Ihren
-        Suchbegriffen und keine rechtliche Bewertung. Originalnachrichten im
-        Postfach werden zu keinem Zeitpunkt verändert.
+        Suchbegriffen und keine rechtliche Bewertung. Originalnachrichten
+        werden gelesen und auf ausdrückliche Auswahl hin kopiert — nicht
+        verschoben, nicht gelöscht, nicht verändert.
       </p>
+      <!--
+        Which build is on screen. A tab left open across a deployment used to
+        be indistinguishable from a current one; this line makes it visible.
+      -->
+      <p class="version">Version: <span id="ui-version">unbekannt</span></p>
     </footer>
 
-    <script type="module" src="src/main.js"></script>
+    <script type="module" src="src/main.js?v=7"></script>
   </body>
 </html>

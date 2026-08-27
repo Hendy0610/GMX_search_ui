@@ -180,7 +180,11 @@ test("each checkbox carries its own identity key", () => {
 // --- the count and the confirmation -----------------------------------------
 
 test("the count is stated, including when it is zero", () => {
-  assert.equal(selectionSummary(0), "Keine Nachricht ausgewählt.");
+  // The zero case also says what to do about it: a bare count is accurate and
+  // useless to someone who has not noticed the checkboxes. That is not a
+  // hypothetical - it is what went wrong once.
+  assert.match(selectionSummary(0), /^0 Nachrichten ausgewählt/);
+  assert.match(selectionSummary(0), /haken Sie .* an/);
   assert.equal(selectionSummary(1), "1 Nachricht ausgewählt");
   assert.equal(selectionSummary(3), "3 Nachrichten ausgewählt");
 });

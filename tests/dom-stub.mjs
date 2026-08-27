@@ -1,4 +1,9 @@
+import { readFileSync } from "node:fs";
+
 // A DOM small enough to read, big enough to prove the escaping rule.
+//
+// `createPageStub` additionally reads the real index.html so that a test can
+// check the application against the ids the page actually has.
 //
 // jsdom would work, but it is a dependency, and the property under test here is
 // narrow: does the rendering code put untrusted strings in as *text*? A stub
@@ -42,6 +47,19 @@ class StubNode {
     this.children = [...nodes];
     this._text = "";
   }
+
+  insertBefore(node, reference) {
+    const at = reference ? this.children.indexOf(reference) : -1;
+    if (at < 0) {
+      this.children.push(node);
+    } else {
+      this.children.splice(at, 0, node);
+    }
+    return node;
+  }
+
+  /** Focus is a real thing the application asks for; here it is a no-op. */
+  focus() {}
 
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
@@ -94,6 +112,44 @@ export function createStubDocument() {
       return node;
     },
   };
+}
+
+/**
+ * A stub document carrying exactly the ids that index.html carries.
+ *
+ * Built by scanning the real markup rather than from a hand-written list, and
+ * that is the whole point. A hand-written list drifts: the application can
+ * start addressing an element the page does not have, every test still passes,
+ * and the failure surfaces in a browser. Scanning the file means the tests see
+ * the same set of ids the browser will.
+ *
+ * The nodes are stubs, so this proves wiring - "app.js addresses ids that
+ * exist" - not layout. Whether the element is *visible* is a browser question,
+ * and is checked in a browser.
+ */
+export function createPageStub(htmlPath) {
+  const html = readFileSync(htmlPath, "utf8");
+  const doc = createStubDocument();
+  const ids = [];
+  // Each opening tag, whole, so the tag name and the attributes on it are read
+  // from the same element rather than guessed at.
+  for (const match of html.matchAll(/<([a-zA-Z][\w-]*)\b([^>]*)>/g)) {
+    const [, tag, attrs] = match;
+    const id = /\bid="([^"]+)"/.exec(attrs)?.[1];
+    if (!id) {
+      continue;
+    }
+    ids.push(id);
+    const node = new StubNode(tag);
+    node.setAttribute("id", id);
+    node.value = "";
+    node.checked = false;
+    node.disabled = /\bdisabled\b/.test(attrs);
+    node.hidden = /\bhidden\b/.test(attrs);
+    doc._register(id, node);
+    doc.body.appendChild(node);
+  }
+  return { doc, ids };
 }
 
 export { StubNode };

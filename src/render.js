@@ -258,10 +258,13 @@ export function renderHit(doc, hit, index, { selectable = false, onToggle = null
       box.addEventListener("change", () => onToggle(key, box.checked, hit));
     }
     row.appendChild(box);
+    // Named for what ticking it leads to. "Nachricht auswählen" on its own
+    // does not say auswählen *wofür*, and a reader scanning a result list has
+    // no reason to guess.
     row.appendChild(
       el(doc, "label", {
         className: "hit-select-label",
-        text: "Nachricht auswählen",
+        text: "Für Rechercheordner auswählen",
         attrs: { for: `select-${index}` },
       }),
     );
@@ -448,10 +451,18 @@ export function confirmationText(count, destination) {
   );
 }
 
-/** How many are selected, in words the interface can show directly. */
+/**
+ * How many are selected, in words the interface can show directly.
+ *
+ * The zero case says what to do about it. A bare "0 Nachrichten ausgewählt"
+ * is accurate and useless to someone who has not noticed the checkboxes.
+ */
 export function selectionSummary(count) {
   if (count === 0) {
-    return "Keine Nachricht ausgewählt.";
+    return (
+      "0 Nachrichten ausgewählt — haken Sie oben einzelne Treffer an, " +
+      "um sie in einen Rechercheordner zu kopieren."
+    );
   }
   return count === 1 ? "1 Nachricht ausgewählt" : `${count} Nachrichten ausgewählt`;
 }

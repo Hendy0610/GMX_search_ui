@@ -26,6 +26,40 @@ import {
   selectionSummary,
 } from "./render.js";
 import { Session } from "./session.js";
+import { UI_VERSION } from "./version.js";
+
+/**
+ * Elements this application addresses by id and cannot work without.
+ *
+ * Checked once at startup, and the reason is a real incident rather than
+ * defensive habit: a browser can hold a cached ``index.html`` from before a
+ * feature existed while loading the current scripts, or hold current markup
+ * and cached scripts. Either mix used to end in an unhandled TypeError on the
+ * first ``addEventListener`` - a blank, silent page.
+ *
+ * A stale page is now a message the operator can act on.
+ */
+const REQUIRED_ELEMENTS = [
+  "connect-form",
+  "disconnect",
+  "research-form",
+  "query",
+  "results",
+  "new-research",
+  // Everything below arrived with the selection feature. A page missing them
+  // is a page from before it.
+  "destination",
+  "allow-existing",
+  "selection-count",
+  "copy-controls",
+  "start-copy",
+  "copy-confirm-box",
+  "copy-confirm-text",
+  "confirm-copy",
+  "cancel-copy",
+  "copy-status",
+  "copy-result",
+];
 
 const POLL_INTERVAL_MS = 4000;
 const POLL_TIMEOUT_MS = 30 * 60 * 1000;
@@ -139,7 +173,17 @@ export class App {
     return this.doc.getElementById(id);
   }
 
+  /** Ids from REQUIRED_ELEMENTS that this document does not have. */
+  missingElements() {
+    return REQUIRED_ELEMENTS.filter((id) => this.$(id) === null);
+  }
+
   start() {
+    const missing = this.missingElements();
+    if (missing.length) {
+      this.#reportStalePage(missing);
+      return false;
+    }
     const remembered = this.session.recallConfig();
     if (remembered) {
       this.config = { ...this.config, ...remembered };
@@ -161,7 +205,55 @@ export class App {
     this.$("cancel-copy").addEventListener("click", () => this.cancelCopy());
     this.updatePreview();
     this.#guardAgainstLosingTheKey();
+    this.#showVersion();
     this.#setStep("connect");
+    return true;
+  }
+
+  /**
+   * Say out loud which build is running.
+   *
+   * Both places on purpose: the footer for a person looking at the page, the
+   * console for someone asked "what does it say in the console?" over the
+   * phone.
+   */
+  #showVersion() {
+    const node = this.$("ui-version");
+    if (node) {
+      node.textContent = UI_VERSION;
+    }
+    globalThis.console?.info?.(`Oberfläche: ${UI_VERSION}`);
+  }
+
+  /**
+   * The page in the browser is older than the scripts it loaded.
+   *
+   * Written straight into the document rather than logged, because the person
+   * who needs it is looking at the page, not at the console. A hard reload is
+   * the fix; it is named explicitly, with the key combination.
+   */
+  #reportStalePage(missing) {
+    globalThis.console?.error?.(
+      `Die geladene Seite ist unvollständig (fehlend: ${missing.join(", ")}). ` +
+        `Erwartete Version: ${UI_VERSION}`,
+    );
+    const banner = this.doc.createElement("div");
+    banner.className = "stale-page";
+    const heading = this.doc.createElement("h2");
+    heading.textContent = "Diese Seite ist veraltet";
+    const text = this.doc.createElement("p");
+    text.textContent =
+      "Der Browser zeigt eine ältere Fassung der Oberfläche, in der Teile der " +
+      "Bedienung fehlen. Bitte laden Sie die Seite vollständig neu: " +
+      "Strg + Umschalt + R (Windows/Linux) bzw. Cmd + Umschalt + R (Mac). " +
+      "Es wurde nichts gestartet und nichts verändert.";
+    const version = this.doc.createElement("p");
+    version.className = "muted";
+    version.textContent = `Erwartete Version: ${UI_VERSION}`;
+    banner.appendChild(heading);
+    banner.appendChild(text);
+    banner.appendChild(version);
+    this.doc.body.insertBefore(banner, this.doc.body.firstChild ?? null);
   }
 
   /**
@@ -350,6 +442,9 @@ export class App {
     if (this.$("copy-confirm-box")) {
       this.$("copy-confirm-box").hidden = true;
     }
+    if (this.$("copy-controls")) {
+      this.$("copy-controls").hidden = true;
+    }
   }
 
   /**
@@ -437,6 +532,20 @@ export class App {
       return;
     }
 
+    this.showResult(result, researchId);
+  }
+
+  /**
+   * Put a decrypted result on the page.
+   *
+   * Public, and deliberately so. It used to be the tail of ``#collectResult``,
+   * which meant the only way to reach it was through a GitHub round trip -
+   * so nothing tested it, and the tests that existed called ``renderResults``
+   * directly instead. That left the wiring between the two untested, which is
+   * exactly where a build once shipped a result list with no checkboxes in it.
+   * Reaching this from a test is now one call.
+   */
+  showResult(result, researchId) {
     this.session.setResult(result);
     this.selection.clear();
     this.#status("run-status", "");
@@ -472,7 +581,13 @@ export class App {
    */
   #refreshSelection() {
     const count = this.selection.size;
+    // The count is always on screen, including at zero - that line is what
+    // tells a reader the checkboxes above have a purpose.
     this.$("selection-count").textContent = selectionSummary(count);
+    // The destination and the copy button appear once something is ticked and
+    // disappear again when the last tick is removed. Without a selection there
+    // is nothing for them to act on.
+    this.$("copy-controls").hidden = count === 0;
     this.$("start-copy").disabled = count === 0;
     this.$("copy-confirm-box").hidden = true;
     this.#status("copy-status", "");
