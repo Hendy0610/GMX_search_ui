@@ -23,11 +23,18 @@
         connect-src https://api.github.com;
         img-src 'self';
         form-action 'none';
-        base-uri 'none';
-        frame-ancestors 'none'
+        base-uri 'none'
       "
     />
+    <!--
+      `frame-ancestors` is deliberately absent: a policy delivered through a
+      <meta> element cannot carry it, and browsers ignore it there with a
+      console error. It only works as an HTTP header, and GitHub Pages does not
+      let us set one. Clickjacking protection is therefore NOT in place - see
+      docs/security.md, R-23.
+    -->
     <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
   </head>
 
