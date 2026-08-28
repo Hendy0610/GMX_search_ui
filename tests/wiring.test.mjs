@@ -135,7 +135,7 @@ test("a page missing the selection markup is reported, not crashed through", () 
 test("the running build is named on the page", () => {
   const { doc } = createPageStub(INDEX);
   new App(doc, { storage: new MemoryStorage() }).start();
-  assert.match(doc.getElementById("ui-version").textContent, /Phase 7/);
+  assert.match(doc.getElementById("ui-version").textContent, /^\d{4}-\d{2}-\d{2} · Phase \d/);
 });
 
 // --- what a real result puts on the page ------------------------------------
@@ -408,4 +408,36 @@ test("starting a new research drops the selection and hides the copy controls", 
   assert.equal(app.selection.size, 0);
   assert.equal(doc.getElementById("copy-controls").hidden, true);
   assert.equal(doc.getElementById("results").children.length, 0);
+});
+
+// --- what a failed run tells the operator (R-19) -----------------------------
+
+/**
+ * Both workflows can fail because the mail provider declined a login that was
+ * perfectly valid. From the screen that is indistinguishable from a wrong
+ * password, so the message names the likely cause without asserting it - the
+ * browser is never told why a run failed.
+ */
+function appSource() {
+  return readFileSync(fileURLToPath(new URL("../src/app.js", import.meta.url)), "utf8");
+}
+
+test("both failure messages point at the commonest cause and at a retry", () => {
+  const source = appSource();
+  const hits = source.match(/Häufigste Ursache/g) ?? [];
+  assert.equal(hits.length, 2, "research and copy must both say it");
+  assert.match(source, /abgelehnte Anmeldung/);
+  assert.match(source, /erneuter Versuch/);
+});
+
+test("no failure message claims the password is wrong", () => {
+  // Sending the operator to change a password that was never the problem is
+  // exactly what R-19 warns about: the two cases are indistinguishable here.
+  assert.equal(/Passwort (ist )?falsch|Zugangsdaten (sind )?falsch/i.test(appSource()), false);
+});
+
+test("no failure message promises an automatic retry", () => {
+  // A refused login is never retried automatically. That rule lives in the
+  // backend, and the interface must not suggest otherwise.
+  assert.equal(/automatisch (wiederholt|erneut versucht)/i.test(appSource()), false);
 });

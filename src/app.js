@@ -484,9 +484,20 @@ export class App {
           return;
         }
         if (state.state === "failed") {
+          // Same honesty as the copy path, and for the same reason: the
+          // commonest failure here is a login the mail provider declined
+          // (R-19), which is indistinguishable from a wrong password to
+          // whoever is looking at the screen. Saying only "failed" leaves them
+          // checking credentials that were never the problem. The cause is
+          // named as the likely one, not asserted - the browser is not told
+          // why a run failed.
           this.#status(
             "run-status",
-            `${state.text}. Die Recherche wurde nicht abgeschlossen; es liegt kein Ergebnis vor.`,
+            `${state.text}. Die Recherche wurde nicht abgeschlossen; es liegt ` +
+              "kein Ergebnis vor. Häufigste Ursache ist eine vom Mailanbieter " +
+              "abgelehnte Anmeldung — dann stimmen die Zugangsdaten, und ein " +
+              "erneuter Versuch nach einigen Minuten ist sinnvoll. Einzelheiten " +
+              "im Protokoll des Laufs in GitHub.",
             "error",
           );
           return;
