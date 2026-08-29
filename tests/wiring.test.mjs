@@ -132,10 +132,13 @@ test("a page missing the selection markup is reported, not crashed through", () 
   assert.match(banner.allText(), /neu/);
 });
 
+// The point is that the footer names *a* build with a date, not that the label
+// follows any particular scheme. It said "Phase N" while the phase plan ran;
+// pinning that here would force a false "Phase 10" the moment the plan ended.
 test("the running build is named on the page", () => {
   const { doc } = createPageStub(INDEX);
   new App(doc, { storage: new MemoryStorage() }).start();
-  assert.match(doc.getElementById("ui-version").textContent, /^\d{4}-\d{2}-\d{2} · Phase \d/);
+  assert.match(doc.getElementById("ui-version").textContent, /^\d{4}-\d{2}-\d{2} · \S/);
 });
 
 // --- what a real result puts on the page ------------------------------------

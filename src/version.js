@@ -9,4 +9,4 @@
 // Now it can. The footer shows this string and the console logs it, so
 // "which version am I looking at?" is a question with an answer instead of an
 // inference from deploy timestamps.
-export const UI_VERSION = "2026-08-28 · Phase 8 (Betriebshärtung)";
+export const UI_VERSION = "2026-08-29 · Backend-Branch main";

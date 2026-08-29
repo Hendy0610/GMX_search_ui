@@ -18,7 +18,7 @@ export const CONFIG = {
   workflow: "research.yml",
   // The second workflow: copies selected originals into a research folder.
   copyWorkflow: "copy.yml",
-  ref: "claude/gmx-serverless-research-ipe51j",
+  ref: "main",
 
   // Orphan branch carrying the encrypted result envelopes.
   resultsBranch: "research-results",
